@@ -10,7 +10,7 @@
  * Notion API: 넥슨 내부 PAT 프록시 경유
  *   Base URL : https://notion-pat-proxy.nexon.co.kr/v1
  *   Auth     : Bearer <PAT>
- *   Version  : 2025-09-03
+ *   Version  : 2026-03-11
  * ─────────────────────────────────────────────────
  */
 
@@ -29,7 +29,7 @@ const SLACK_WEBHOOK_URL     = process.env.SLACK_WEBHOOK_URL     || "";
 
 /* ═══ Notion PAT 프록시 설정 ═══ */
 const NOTION_BASE  = "https://notion-pat-proxy.nexon.co.kr/v1";
-const NOTION_VER   = "2025-09-03";
+const NOTION_VER   = "2026-03-11";
 
 const COUNTRIES = ["KR", "TW", "JP", "US", "TH"];
 const CC = { KR: "🇰🇷 한국", TW: "🇹🇼 대만", JP: "🇯🇵 일본", US: "🇺🇸 미국", TH: "🇹🇭 태국" };
