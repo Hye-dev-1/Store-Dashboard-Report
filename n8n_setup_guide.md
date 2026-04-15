@@ -3,70 +3,108 @@
 ## 구조 요약
 
 ```
-GitHub Actions (무료, Puppeteer 실행 가능)
-  ├─ crawl-featured.mjs  → Apple + GP Puppeteer 크롤링
-  ├─ git commit data/    → data/*.json 커밋 (apple + google 필드)
+GitHub Actions (Puppeteer 크롤링)
+  ├─ crawl-featured.mjs  → Apple + GP Puppeteer + scraper 보강
+  ├─ git commit data/    → data/*.json (apple + google 필드)
   └─ POST n8n webhook    → 크롤링 결과 JSON 전송
         │
         ▼
-n8n Cloud (무료, 서버 불필요)
-  ├─ Webhook trigger     → 크롤링 데이터 수신
-  ├─ Code node           → NEXON 감지, 장르 통계, 국가별 요약
-  ├─ Notion HTTP         → DB 로그 INSERT + 리포트 페이지 생성
+n8n Cloud (리포팅 전용, 서버 불필요)
+  ├─ Webhook trigger     → 데이터 수신
+  ├─ Code node           → NEXON 감지, 장르 통계, 리포트 마크다운 생성
+  ├─ Notion node         → DB 로그 INSERT
+  ├─ Wait 400ms          → Rate Limit 대응
+  ├─ Notion node         → 리포트 페이지 생성
   ├─ Slack HTTP          → 일일 요약 알림
   └─ IF → Slack HTTP     → NEXON 피쳐드 알림 (조건부)
 ```
 
-n8n Cloud에서는 Execute Command가 비활성화되어 있어 Puppeteer를 직접 실행할 수 없습니다.
-그래서 크롤링은 기존 GitHub Actions가 담당하고, 리포팅만 n8n Cloud로 위임합니다.
+---
+
+## 운영 주의사항
+
+### ⚠️ Integration 연결 (가장 흔한 실패 원인)
+
+Notion API로 접근하려는 DB나 페이지에 반드시 해당 Integration이 연결되어 있어야 합니다.
+미연결 시 Notion 노드 드롭다운에 DB가 표시되지 않거나 404 오류가 발생합니다.
+
+연결 방법: Notion에서 해당 페이지/DB 열기 → 우측 상단 `···` → **Connections** → Integration 선택
+
+일일 로그 DB와 리포트 부모 페이지 **둘 다** 연결해야 합니다.
+
+### ⚠️ Rate Limit (초당 3회)
+
+Notion API는 초당 3회 요청 제한이 있습니다.
+
+- **n8n**: Notion DB Log → **Wait 400ms** → Notion Report 순서로 구성하여 rate limit 회피.
+  대량 처리가 필요한 경우 Split In Batches 노드 + Wait 노드 조합 권장.
+- **report-featured.mjs**: 429 응답 시 `Retry-After` 헤더를 읽어 exponential backoff로
+  최대 3회 재시도. 국가별 INSERT 사이에 350ms 대기.
+
+### ⚠️ Credential 보안
+
+- Integration Secret은 **n8n Credentials에만 저장**하고 워크플로 JSON이나 로그에 노출 금지.
+- 워크플로 JSON 내 Slack Webhook URL은 `$credentials.slackWebhookUrl` 표현식으로 참조하여
+  JSON 파일 자체에 URL이 포함되지 않도록 처리.
+- GitHub Actions의 Secret(`N8N_WEBHOOK_URL`, `NOTION_TOKEN` 등)은 Actions Secrets에만 등록.
+
+### ⚠️ 에러 핸들링
+
+- 모든 Notion/Slack 노드에 **Continue On Fail** (`onError: continueRegularOutput`) 설정.
+  한 노드가 실패해도 나머지 리포팅은 계속 진행.
+- **Error Workflow** 설정: 어떤 노드에서든 에러 발생 시 `❌ Error → Slack` 노드가 실행되어
+  Slack으로 에러 내용 알림.
+- report-featured.mjs도 main() catch에서 Slack 에러 알림 후 process.exit(1).
+
+### ⚠️ Notion-Version 헤더
+
+n8n 빌트인 Notion 노드는 적절한 Notion API 버전이 자동 설정되므로 별도 헤더 설정이 불필요합니다.
+HTTP Request 노드로 Notion API를 직접 호출할 경우에만 수동으로 `Notion-Version` 헤더를 추가하세요.
+
+report-featured.mjs는 `2026-03-11` 버전을 사용합니다.
+2026-03-11 breaking changes (`archived` → `in_trash`, `after` → `position`, `transcription` → `meeting_notes`)는
+현재 코드에서 해당 필드를 사용하지 않으므로 영향 없음.
 
 ---
 
 ## 1단계: n8n Cloud 가입
 
-1. **https://app.n8n.cloud/register** 에서 가입
+1. https://app.n8n.cloud/register 에서 가입
 2. 무료 플랜 선택 (워크플로 5개, 월 실행 제한 있지만 일 1회면 충분)
-3. 가입 완료 후 대시보드 진입
 
 ---
 
-## 2단계: n8n 워크플로 임포트
+## 2단계: Credential 등록 (JSON 임포트 전에 먼저)
 
-1. n8n 대시보드 → **Workflows** → **Import from File**
-2. `n8n-workflow.json` 업로드
-3. 워크플로가 열리면 아래 3곳을 수정:
+### Notion Credential
 
-### 수정할 곳
+1. n8n → **Credentials** → **Add Credential** → **Notion API**
+2. Internal Integration Secret 입력
+3. 저장 후 Credential ID 확인 (워크플로 노드에 자동 연결됨)
 
-| 노드 | 수정 필드 | 입력할 값 |
-|------|----------|-----------|
-| 📝 Notion DB Log | jsonBody 안 `여기에_NOTION_DB_ID_입력` | Notion DB ID (32자리 hex) |
-| 📈 Notion Report Page | jsonBody 안 `여기에_REPORT_PAGE_ID_입력` | Notion 리포트 부모 페이지 ID |
-| 📋 Slack Daily + 🔔 Slack NEXON | url 필드 `여기에_SLACK_WEBHOOK_URL_입력` | Slack Webhook 전체 URL |
-
----
-
-## 3단계: n8n Credential 설정
-
-### Notion API (Header Auth)
-
-1. n8n → **Credentials** → **Add Credential** → **Header Auth**
-2. Name: `Notion Token`
-3. Header Name: `Authorization`
-4. Header Value: `Bearer ntn_xxxxxxxxxx` (Notion Internal Integration Secret)
-5. 각 Notion HTTP Request 노드에서 이 credential 선택
-
-### Notion Integration 생성
-
+Notion Integration 생성:
 1. https://www.notion.so/my-integrations → **New integration**
 2. 이름: `Store Featured Bot`
-3. Capabilities: **Read content**, **Insert content**, **Update content**
-4. **Internal Integration Secret** 복사 → n8n credential에 입력
-5. Notion 페이지/DB에서 `...` → **Connections** → `Store Featured Bot` 추가
+3. Capabilities: Read content, Insert content, Update content
+4. Internal Integration Secret 복사
 
-### Notion DB 생성
+### Slack Credential
 
-아래 스키마로 DB 생성 (일일 로그용):
+1. n8n → **Credentials** → **Add Credential** → **Header Auth** (또는 직접 변수 사용)
+2. Slack Incoming Webhook URL 저장
+
+Slack Webhook 생성:
+1. https://api.slack.com/apps → Create New App → From scratch
+2. Incoming Webhooks → Activate → Add New Webhook to Workspace
+3. 채널 선택 (예: `#store-featured`)
+
+---
+
+## 3단계: Notion DB/페이지 준비
+
+### 일일 로그 DB
+
+아래 스키마로 생성:
 
 | 속성명 | 타입 | 설명 |
 |--------|------|------|
@@ -77,63 +115,59 @@ n8n Cloud에서는 Execute Command가 비활성화되어 있어 Puppeteer를 직
 | NEXON 수 | Number | NEXON 타이틀 수 |
 | Top 장르 | Select | 최다 장르 |
 
-DB 생성 후 URL에서 ID 추출:
+### 리포트 페이지
+
+빈 페이지 하나 생성 (트렌드 리포트의 부모).
+
+**두 곳 모두 Integration 연결 필수**: DB/페이지 → `···` → Connections → `Store Featured Bot`
+
+---
+
+## 4단계: 워크플로 임포트
+
+1. n8n → **Workflows** → **Import from File** → `n8n-workflow.json` 업로드
+2. 수정할 곳:
+
+| 노드 | 수정 | 입력값 |
+|------|------|--------|
+| 📝 Notion DB Log | databaseId | Notion DB ID (32자리) |
+| 📈 Notion Report | parentPageId | 리포트 부모 페이지 ID |
+| 📝, 📈 | credentials | 2단계에서 만든 Notion credential 선택 |
+| 📋, 🔔, ❌ | url 또는 credential | Slack Webhook URL (credential 참조) |
+
+Notion DB ID 확인법:
 ```
 https://notion.so/xxxxx/DB이름-[여기가_DB_ID]?v=xxxxx
-                              └──────────────────┘
-                              32자리 hex (하이픈 없이)
 ```
 
-### Slack Incoming Webhook
-
-1. https://api.slack.com/apps → **Create New App** → From scratch
-2. 이름: `Store Featured Bot`, 워크스페이스 선택
-3. **Incoming Webhooks** → Activate → **Add New Webhook to Workspace**
-4. 채널 선택 (예: `#store-featured`)
-5. Webhook URL 전체 복사 → n8n 노드 url 필드에 입력
+3. 워크플로 **Active** 토글 ON
 
 ---
 
-## 4단계: Webhook URL 확인
+## 5단계: Webhook URL 확인 및 GitHub 연결
 
-1. n8n에서 워크플로 열기
-2. **🔗 Webhook** 노드 클릭 → 우측 패널에서 **Webhook URLs** 확인
-3. **Production URL** 복사 (형태: `https://your-instance.app.n8n.cloud/webhook/store-featured-report`)
-4. 워크플로 **Active** 토글 ON (이걸 켜야 Webhook이 수신 가능)
+1. n8n **🔗 Webhook** 노드 → **Production URL** 복사
+2. GitHub repo → **Settings** → **Secrets** → `N8N_WEBHOOK_URL` 등록
 
----
-
-## 5단계: GitHub Secrets 등록
-
-GitHub 리포지토리 → **Settings** → **Secrets and variables** → **Actions** → **New repository secret**
-
-| Secret 이름 | 값 | 용도 |
-|-------------|-----|------|
+| GitHub Secret | 값 | 용도 |
+|--------------|-----|------|
 | `N8N_WEBHOOK_URL` | n8n Production Webhook URL | Actions → n8n 트리거 |
 
-이 Secret이 등록되면 Actions에서 크롤링 후 n8n을 호출합니다.
-등록하지 않으면 기존 `report-featured.mjs` 스크립트로 폴백합니다.
+n8n 없이 폴백: `N8N_WEBHOOK_URL` 미등록 시 `report-featured.mjs` 직접 실행.
+이 경우 아래 Secrets 필요:
 
-### 폴백 모드 (n8n 없이)
-
-n8n 없이도 `report-featured.mjs`로 직접 Notion/Slack 리포팅이 가능합니다.
-이 경우 아래 Secrets를 등록하면 됩니다:
-
-| Secret 이름 | 값 |
-|-------------|-----|
-| `NOTION_TOKEN` | Notion Internal Integration Secret |
-| `NOTION_DB_ID` | Notion DB ID |
-| `NOTION_REPORT_PAGE_ID` | 리포트 부모 페이지 ID |
+| Secret | 값 |
+|--------|-----|
+| `NOTION_TOKEN` | Notion Integration Secret |
+| `NOTION_DB_ID` | DB ID |
+| `NOTION_REPORT_PAGE_ID` | 리포트 페이지 ID |
 | `SLACK_WEBHOOK_URL` | Slack Webhook URL |
 
 ---
 
 ## 6단계: 테스트
 
-### n8n 테스트
-
-1. n8n에서 워크플로 열고 **🔗 Webhook** 노드의 **Test URL** 복사
-2. 터미널에서 테스트 요청 전송:
+### n8n 단독 테스트
 
 ```bash
 curl -X POST https://your-instance.app.n8n.cloud/webhook-test/store-featured-report \
@@ -149,82 +183,32 @@ curl -X POST https://your-instance.app.n8n.cloud/webhook-test/store-featured-rep
   }'
 ```
 
-3. n8n 실행 결과 확인 → Notion + Slack에 데이터가 들어오는지 확인
+확인 항목:
+- Notion DB에 행 생성 여부
+- Notion 리포트 페이지 생성 여부
+- Slack 일일 요약 + NEXON 알림 수신 여부
 
-### GitHub Actions 테스트
+### GitHub Actions E2E 테스트
 
-1. 리포지토리 → **Actions** → **Crawl & Report Store Featured**
-2. **Run workflow** 클릭 (수동 실행)
-3. 로그에서 크롤링 → 커밋 → n8n webhook 호출 순서 확인
-
----
-
-## 데이터 흐름 상세
-
-```
-GitHub Actions crawl-featured.mjs
-  │
-  │  Apple Store: Games탭 hero 배너 + h3 카드
-  │              Today탭 게임만 필터 (MapleStory Worlds 예외)
-  │              상세페이지 → 개발사, 장르, 아이콘 보강
-  │
-  │  Google Play: .ULeU3b 배너 (.fkdIre 이름, .bcLwIe 개발사,
-  │               .nnW2Md 아이콘, .GnAUad 배지)
-  │              Top Charts 페이지
-  │
-  ▼
-data/KR.json = { apple: [...], google: [...] }
-  │
-  │  POST to n8n webhook (JSON payload)
-  │  payload = { date, countries: { KR: {apple,google}, TW: ... } }
-  │
-  ▼
-n8n Code Node
-  │  NEXON 감지 (개발사명 14종 매칭)
-  │  양쪽 피쳐드 체크 (apple ∩ google)
-  │  장르 통계 집계
-  │  국가별 요약 생성
-  │
-  ├─→ Notion DB: 일일 로그 행 INSERT
-  ├─→ Notion Page: 트렌드 리포트 (국가별 현황 + NEXON + 장르)
-  ├─→ Slack: 일일 요약
-  └─→ Slack: NEXON 알림 (있을 때만)
-```
+Actions → **Run workflow** 수동 실행 → 로그에서 크롤링 → 커밋 → n8n 호출 확인.
 
 ---
 
-## Slack 알림 예시
+## 워크플로 노드 상세
 
-### 일일 요약
-```
-📊 일일 피쳐드 요약 (2026-04-15)
-🍎 App Store: 104개  |  🟢 Google Play: 78개
-🎯 NEXON: 5개  |  🏆 Top 장르: RPG
+| 노드 | 타입 | 역할 | 에러 처리 |
+|------|------|------|-----------|
+| 🔗 Webhook | Webhook | GitHub Actions에서 POST 수신 | — |
+| 📊 Parse & Analyze | Code | NEXON 감지, 장르 통계, 마크다운 생성 | — |
+| 📝 Notion DB Log | **Notion (native)** | DB에 일일 요약 INSERT | continueOnFail |
+| ⏳ Wait 400ms | Wait | Rate Limit 대응 (3 req/sec) | — |
+| 📈 Notion Report | **Notion (native)** | 리포트 페이지 생성 | continueOnFail |
+| 📋 Slack Daily | HTTP Request | 일일 요약 알림 | continueOnFail |
+| 🔍 NEXON? | IF | NEXON 존재 시 분기 | — |
+| 🔔 Slack NEXON | HTTP Request | NEXON 알림 | continueOnFail |
+| ❌ Error → Slack | HTTP Request | Error Workflow 대상 | — |
 
-🇰🇷 한국  AS 22 / GP 18 / NX 5
-🇹🇼 대만  AS 20 / GP 15 / NX 3
-🇯🇵 일본  AS 25 / GP 20 / NX 4
-🇺🇸 미국  AS 19 / GP 14 / NX 2
-🇹🇭 태국  AS 18 / GP 11 / NX 1
-
-[📊 대시보드]
-```
-
-### NEXON 알림
-```
-🎮 NEXON 피쳐드 알림 (2026-04-15)
-5개 NEXON 타이틀 스토어 피쳐드 등장
-────────────
-MapleStory 🍎 🟢
-#3 | RPG | 🇰🇷 🇹🇼 🇯🇵
-🔥 배너 · ⚡ 양쪽
-
-The First Descendant 🟢
-#7 | 액션 | 🇰🇷 🇺🇸
-🔥 배너
-────────────
-[대시보드 열기]
-```
+Notion 노드는 n8n 빌트인 Notion 노드를 사용하므로 **Notion-Version 헤더가 자동 설정**됩니다.
 
 ---
 
@@ -232,13 +216,14 @@ The First Descendant 🟢
 
 | 증상 | 원인 | 해결 |
 |------|------|------|
-| n8n webhook 404 | 워크플로 비활성 | Active 토글 ON 확인 |
-| n8n webhook timeout | payload 너무 큼 | 5개국 데이터 합치면 ~1MB, n8n Cloud 제한 확인 |
-| Notion 401 | Integration 미연결 | 페이지/DB에 Connection 추가 |
-| Notion 400 | DB 스키마 불일치 | 속성명 정확히 일치하는지 확인 (한글 주의) |
-| Slack 미전송 | Webhook 만료 | Slack App에서 Webhook 재생성 |
-| Actions에서 n8n 미호출 | Secret 미등록 | `N8N_WEBHOOK_URL` Secret 확인 |
-| GP 배너 0개 | 셀렉터 변경됨 | GP 페이지 소스에서 `.ULeU3b` 확인 |
+| Notion 노드 DB 드롭다운 비어있음 | Integration 미연결 | DB에서 ··· → Connections → 연결 |
+| Notion 404 | 페이지/DB에 Integration 미연결 | 위와 동일 |
+| Notion 429 | Rate limit 초과 | Wait 노드 시간 증가 (500ms~1s) |
+| Notion 401 | Token 만료 또는 잘못됨 | Credential 재확인 |
+| n8n webhook 404 | 워크플로 비활성 | Active 토글 ON |
+| Slack 미전송 | Webhook URL 만료 | Slack App에서 재생성 |
+| Actions에서 n8n 미호출 | Secret 미등록 | `N8N_WEBHOOK_URL` 확인 |
+| GP 배너 0개 | 셀렉터 변경 | `.ULeU3b` 확인 후 갱신 |
 
 ---
 
@@ -246,18 +231,13 @@ The First Descendant 🟢
 
 ```
 Store-Featured-Dash/
-├── .github/workflows/
-│   └── crawl.yml            ← Actions: 크롤링 + n8n 호출
+├── .github/workflows/crawl.yml   ← Actions: 크롤링 + n8n 호출/폴백
 ├── scripts/
-│   ├── crawl-featured.mjs   ← Puppeteer 크롤러 (Apple + GP)
-│   └── report-featured.mjs  ← 직접 리포팅 스크립트 (폴백용)
-├── data/                    ← 크롤링 결과 JSON
-├── netlify/functions/
-│   └── crawl.js             ← Netlify 함수 (대시보드 API)
-├── public/
-│   └── index.html           ← 대시보드 프론트엔드
-├── n8n-workflow.json         ← n8n Cloud 워크플로 (임포트용)
-├── N8N_SETUP_GUIDE.md        ← 이 가이드
-├── package.json
-└── netlify.toml
+│   ├── crawl-featured.mjs        ← Puppeteer + scraper 보강
+│   └── report-featured.mjs       ← 직접 리포팅 (폴백용, 429 retry 포함)
+├── data/*.json                   ← {apple: [...], google: [...]}
+├── public/index.html             ← GitHub Raw URL fetch (로컬 사용)
+├── n8n-workflow.json             ← n8n 워크플로 (native Notion 노드)
+├── N8N_SETUP_GUIDE.md            ← 이 가이드
+└── package.json
 ```
