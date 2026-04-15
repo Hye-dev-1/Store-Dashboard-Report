@@ -17,7 +17,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const body = $input.first().json.body || $input.first().json;\nconst COUNTRIES = ['KR','TW','JP','US','TH'];\nconst CC = {KR:'🇰🇷 한국',TW:'🇹🇼 대만',JP:'🇯🇵 일본',US:'🇺🇸 미국',TH:'🇹🇭 태국'};\n\nconst NX = ['nexon','nexon company','nexon corporation','nexon korea',\n  'nexon korea corporation','nexon games','neople','neople inc',\n  'toben studio','toben studio inc','nexon gt','embark studios',\n  'nat games','mintrocket'];\nfunction isNX(dev) {\n  if (!dev) return false;\n  const dl = dev.toLowerCase().trim();\n  return NX.some(nx => dl.includes(nx));\n}\n\nconst allNexon = [];\nconst summaries = [];\nconst genreStats = {};\nlet totalApple = 0, totalGoogle = 0;\n\nfor (const cc of COUNTRIES) {\n  const d = body.countries?.[cc];\n  if (!d || d.error) { summaries.push({cc, name:CC[cc], error: d?.error||'no data'}); continue; }\n  const apple = d.apple || [], google = d.google || [];\n  totalApple += apple.length;\n  totalGoogle += google.length;\n  const nxA = apple.filter(a => a.nexon || isNX(a.dev));\n  const nxG = google.filter(a => a.nexon || isNX(a.dev));\n  nxA.forEach(a => allNexon.push({...a, country:cc, store:'apple'}));\n  nxG.forEach(a => allNexon.push({...a, country:cc, store:'google'}));\n  const aSet = new Set(apple.map(a=>(a.name||'').toLowerCase()));\n  const gSet = new Set(google.map(a=>(a.name||'').toLowerCase()));\n  const common = [...aSet].filter(n=>n&&gSet.has(n));\n  summaries.push({\n    cc, name:CC[cc],\n    apple:apple.length, google:google.length,\n    nxApple:nxA.length, nxGoogle:nxG.length,\n    common:common.length,\n    appleBanners:apple.filter(a=>a.banner).length,\n    googleBanners:google.filter(a=>a.banner).length\n  });\n  [...apple,...google].forEach(a => { if(a.genre) genreStats[a.genre]=(genreStats[a.genre]||0)+1; });\n}\n\nconst nxMap = {};\nallNexon.forEach(a => {\n  const key = (a.name||'').toLowerCase().replace(/[™:：\\s]/g,'');\n  if (!nxMap[key]) nxMap[key] = {...a, countries:new Set(), stores:new Set()};\n  nxMap[key].countries.add(a.country);\n  nxMap[key].stores.add(a.store);\n});\nconst nexonList = Object.values(nxMap).map(a=>({\n  name:a.name, dev:a.dev, rank:a.rank,\n  countries:[...a.countries], stores:[...a.stores],\n  banner:a.banner, genre:a.genre||'',\n  bothStores:a.stores.size>=2\n}));\n\nconst topGenres = Object.entries(genreStats)\n  .sort((a,b)=>b[1]-a[1]).slice(0,5)\n  .map(([genre,count])=>({genre,count}));\n\nreturn [{\n  json: {\n    date: body.date || new Date().toISOString().slice(0,10),\n    totalApple, totalGoogle, summaries, nexonList,\n    nexonCount: nexonList.length,\n    hasNexon: nexonList.length > 0,\n    topGenres\n  }\n}];"
+        "jsCode": "const body = $input.first().json.body || $input.first().json;\nconst COUNTRIES = ['KR','TW','JP','US','TH'];\nconst CC = {KR:'🇰🇷 한국',TW:'🇹🇼 대만',JP:'🇯🇵 일본',US:'🇺🇸 미국',TH:'🇹🇭 태국'};\n\nconst NX = ['nexon','nexon company','nexon corporation','nexon korea',\n  'nexon korea corporation','nexon games','neople','neople inc',\n  'toben studio','toben studio inc','nexon gt','embark studios',\n  'nat games','mintrocket'];\nfunction isNX(dev) {\n  if (!dev) return false;\n  const dl = dev.toLowerCase().trim();\n  return NX.some(nx => dl.includes(nx));\n}\n\nconst allNexon = [];\nconst summaries = [];\nconst genreStats = {};\nlet totalApple = 0, totalGoogle = 0;\n\nfor (const cc of COUNTRIES) {\n  const d = body.countries?.[cc];\n  if (!d || d.error) { summaries.push({cc, name:CC[cc], error: d?.error||'no data'}); continue; }\n  const apple = d.apple || [], google = d.google || [];\n  totalApple += apple.length;\n  totalGoogle += google.length;\n  const nxA = apple.filter(a => a.nexon || isNX(a.dev));\n  const nxG = google.filter(a => a.nexon || isNX(a.dev));\n  nxA.forEach(a => allNexon.push({...a, country:cc, store:'apple'}));\n  nxG.forEach(a => allNexon.push({...a, country:cc, store:'google'}));\n  const aSet = new Set(apple.map(a=>(a.name||'').toLowerCase()));\n  const gSet = new Set(google.map(a=>(a.name||'').toLowerCase()));\n  const common = [...aSet].filter(n=>n&&gSet.has(n));\n  summaries.push({\n    cc, name:CC[cc],\n    apple:apple.length, google:google.length,\n    nxApple:nxA.length, nxGoogle:nxG.length,\n    common:common.length,\n    appleBanners:apple.filter(a=>a.banner).length,\n    googleBanners:google.filter(a=>a.banner).length\n  });\n  [...apple,...google].forEach(a => { if(a.genre) genreStats[a.genre]=(genreStats[a.genre]||0)+1; });\n}\n\nconst nxMap = {};\nallNexon.forEach(a => {\n  const key = (a.name||'').toLowerCase().replace(/[™:：\\s]/g,'');\n  if (!nxMap[key]) nxMap[key] = {...a, countries:new Set(), stores:new Set()};\n  nxMap[key].countries.add(a.country);\n  nxMap[key].stores.add(a.store);\n});\nconst nexonList = Object.values(nxMap).map(a=>({\n  name:a.name, dev:a.dev, rank:a.rank,\n  countries:[...a.countries], stores:[...a.stores],\n  banner:a.banner, genre:a.genre||'',\n  bothStores:a.stores.size>=2\n}));\n\nconst topGenres = Object.entries(genreStats)\n  .sort((a,b)=>b[1]-a[1]).slice(0,5)\n  .map(([genre,count])=>({genre,count}));\n\n/* 리포트 페이지 본문 생성 */\nconst summaryText = summaries.filter(s=>!s.error).map(s =>\n  s.name+' — AS '+s.apple+' (배너 '+s.appleBanners+') / GP '+s.google+' (배너 '+s.googleBanners+') / NX: AS '+s.nxApple+' GP '+s.nxGoogle\n).join('\\n');\n\nconst nexonText = nexonList.length ? nexonList.map(n => {\n  const st = n.stores.map(s=>s==='apple'?'🍎AS':'🟢GP').join(' ');\n  const fl = n.countries.map(c=>({KR:'🇰🇷',TW:'🇹🇼',JP:'🇯🇵',US:'🇺🇸',TH:'🇹🇭'}[c]||c)).join(' ');\n  const tags = [];\n  if(n.banner) tags.push('🔥배너');\n  if(n.bothStores) tags.push('⚡양쪽');\n  return n.name+' — '+st+' | '+fl+' | #'+n.rank+' '+tags.join(' ');\n}).join('\\n') : '피쳐드 없음';\n\nconst genreText = topGenres.map(g => g.genre+': '+g.count+'개').join('\\n');\n\nconst reportMarkdown = '## 📊 국가별 현황\\n\\n'+summaryText+'\\n\\n## 🎯 NEXON 피쳐드 ('+nexonList.length+'개)\\n\\n'+nexonText+'\\n\\n## 📈 장르 Top 5\\n\\n'+genreText;\n\nreturn [{\n  json: {\n    date: body.date || new Date().toISOString().slice(0,10),\n    totalApple, totalGoogle, summaries, nexonList,\n    nexonCount: nexonList.length,\n    hasNexon: nexonList.length > 0,\n    topGenres, summaryText, nexonText, genreText, reportMarkdown\n  }\n}];"
       },
       "id": "parse",
       "name": "📊 Parse & Analyze",
@@ -27,61 +27,72 @@
     },
     {
       "parameters": {
-        "method": "POST",
-        "url": "https://api.notion.com/v1/pages",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            { "name": "Notion-Version", "value": "2026-03-11" }
+        "resource": "page",
+        "operation": "create",
+        "databaseId": { "__rl": true, "mode": "id", "value": "={{ /* Notion DB ID — Credential에서 자동 인식 */ '여기에_NOTION_DB_ID_입력' }}" },
+        "properties": {
+          "values": [
+            { "key": "제목",       "title": "={{ '피쳐드 ' + $json.date }}" },
+            { "key": "날짜",       "type": "date", "date": "={{ $json.date }}" },
+            { "key": "Apple 수",   "type": "number", "numberValue": "={{ $json.totalApple }}" },
+            { "key": "Google 수",  "type": "number", "numberValue": "={{ $json.totalGoogle }}" },
+            { "key": "NEXON 수",   "type": "number", "numberValue": "={{ $json.nexonCount }}" },
+            { "key": "Top 장르",   "type": "select", "selectValue": "={{ $json.topGenres[0]?.genre || 'N/A' }}" }
           ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ (() => {\n  const d = $json;\n  const rows = d.summaries.filter(s => !s.error);\n  const firstRow = rows[0] || {};\n  return JSON.stringify({\n    parent: { database_id: '여기에_NOTION_DB_ID_입력' },\n    properties: {\n      '제목': { title: [{ text: { content: '피쳐드 ' + d.date } }] },\n      '날짜': { date: { start: d.date } },\n      'Apple 수': { number: d.totalApple },\n      'Google 수': { number: d.totalGoogle },\n      'NEXON 수': { number: d.nexonCount },\n      'Top 장르': { select: { name: d.topGenres[0]?.genre || 'N/A' } }\n    }\n  });\n})() }}"
+        }
       },
       "id": "notion-db",
       "name": "📝 Notion DB Log",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [720, 180]
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [740, 180],
+      "credentials": { "notionApi": { "id": "CREDENTIAL_ID", "name": "Notion Integration" } },
+      "onError": "continueRegularOutput",
+      "notes": "Notion 커스텀 노드 — Notion-Version 헤더 자동 처리. DB에 Integration 연결 필수."
     },
     {
       "parameters": {
-        "method": "POST",
-        "url": "https://api.notion.com/v1/pages",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            { "name": "Notion-Version", "value": "2026-03-11" }
-          ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ (() => {\n  const d = $json;\n  const children = [];\n  children.push({object:'block',type:'heading_2',heading_2:{rich_text:[{type:'text',text:{content:'📊 국가별 현황'}}]}});\n  d.summaries.filter(s=>!s.error).forEach(s => {\n    children.push({object:'block',type:'paragraph',paragraph:{rich_text:[{type:'text',text:{content: s.name+' — AS '+s.apple+' (배너 '+s.appleBanners+') / GP '+s.google+' (배너 '+s.googleBanners+') / NX: AS '+s.nxApple+' GP '+s.nxGoogle}}]}});\n  });\n  children.push({object:'block',type:'heading_2',heading_2:{rich_text:[{type:'text',text:{content:'🎯 NEXON 피쳐드 ('+d.nexonCount+'개)'}}]}});\n  if (d.nexonList.length) {\n    d.nexonList.forEach(n => {\n      const st = n.stores.map(s=>s==='apple'?'🍎AS':'🟢GP').join(' ');\n      const fl = n.countries.map(c=>({KR:'🇰🇷',TW:'🇹🇼',JP:'🇯🇵',US:'🇺🇸',TH:'🇹🇭'}[c]||c)).join(' ');\n      const tags = [];\n      if(n.banner) tags.push('🔥배너');\n      if(n.bothStores) tags.push('⚡양쪽');\n      children.push({object:'block',type:'paragraph',paragraph:{rich_text:[{type:'text',text:{content: n.name+' — '+st+' | '+fl+' | #'+n.rank+' '+(tags.join(' '))}}]}});\n    });\n  } else {\n    children.push({object:'block',type:'paragraph',paragraph:{rich_text:[{type:'text',text:{content:'피쳐드 없음'}}]}});\n  }\n  children.push({object:'block',type:'heading_2',heading_2:{rich_text:[{type:'text',text:{content:'📈 장르 Top 5'}}]}});\n  d.topGenres.forEach(g => {\n    children.push({object:'block',type:'paragraph',paragraph:{rich_text:[{type:'text',text:{content: g.genre+': '+g.count+'개'}}]}});\n  });\n  children.push({object:'block',type:'divider',divider:{}});\n  children.push({object:'block',type:'bookmark',bookmark:{url:'https://store-featured-dash.netlify.app'}});\n  return JSON.stringify({\n    parent:{page_id:'여기에_REPORT_PAGE_ID_입력'},\n    properties:{title:[{text:{content:'📈 피쳐드 리포트 '+d.date}}]},\n    icon:{emoji:'📈'},\n    children\n  });\n})() }}"
+        "amount": 0.4
+      },
+      "id": "wait-1",
+      "name": "⏳ Wait 400ms",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [920, 180],
+      "notes": "Notion Rate Limit 대응 (3 req/sec)"
+    },
+    {
+      "parameters": {
+        "resource": "page",
+        "operation": "create",
+        "parentPageId": { "__rl": true, "mode": "id", "value": "={{ '여기에_REPORT_PAGE_ID_입력' }}" },
+        "title": "={{ '📈 피쳐드 리포트 ' + $json.date }}",
+        "content": "={{ $json.reportMarkdown }}"
       },
       "id": "notion-report",
-      "name": "📈 Notion Report Page",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [720, 300]
+      "name": "📈 Notion Report",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [1100, 180],
+      "credentials": { "notionApi": { "id": "CREDENTIAL_ID", "name": "Notion Integration" } },
+      "onError": "continueRegularOutput",
+      "notes": "리포트 부모 페이지에 Integration 연결 필수. Notion-Version 자동 설정."
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "여기에_SLACK_WEBHOOK_URL_입력",
+        "url": "={{ $credentials.slackWebhookUrl }}",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ (() => {\n  const d = $json;\n  const lines = d.summaries.filter(s=>!s.error).map(s=> s.name+' AS '+s.apple+' / GP '+s.google+' / NX '+(s.nxApple+s.nxGoogle)).join('\\n');\n  return JSON.stringify({\n    blocks: [\n      {type:'header',text:{type:'plain_text',text:'📊 일일 피쳐드 요약 ('+d.date+')',emoji:true}},\n      {type:'section',text:{type:'mrkdwn',text:'🍎 App Store: *'+d.totalApple+'*개  |  🟢 Google Play: *'+d.totalGoogle+'*개\\n🎯 NEXON: *'+d.nexonCount+'*개  |  🏆 Top 장르: *'+(d.topGenres[0]?.genre||'-')+'*\\n\\n'+lines}},\n      {type:'actions',elements:[{type:'button',text:{type:'plain_text',text:'📊 대시보드',emoji:true},url:'https://store-featured-dash.netlify.app'}]}\n    ]\n  });\n})() }}"
+        "jsonBody": "={{ (() => {\n  const d = $json;\n  const lines = d.summaries.filter(s=>!s.error).map(s=> s.name+' AS '+s.apple+' / GP '+s.google+' / NX '+(s.nxApple+s.nxGoogle)).join('\\n');\n  return JSON.stringify({\n    blocks: [\n      {type:'header',text:{type:'plain_text',text:'📊 일일 피쳐드 요약 ('+d.date+')',emoji:true}},\n      {type:'section',text:{type:'mrkdwn',text:'🍎 App Store: *'+d.totalApple+'*개  |  🟢 Google Play: *'+d.totalGoogle+'*개\\n🎯 NEXON: *'+d.nexonCount+'*개  |  🏆 Top 장르: *'+(d.topGenres[0]?.genre||'-')+'*\\n\\n'+lines}},\n      {type:'actions',elements:[{type:'button',text:{type:'plain_text',text:'📊 대시보드',emoji:true},url:'https://DASHBOARD_URL'}]}\n    ]\n  });\n})() }}"
       },
       "id": "slack-daily",
       "name": "📋 Slack Daily",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [720, 420]
+      "position": [740, 420],
+      "onError": "continueRegularOutput",
+      "notes": "Slack Webhook URL은 Credential에서 참조. 워크플로 JSON에 URL 직접 노출하지 않음."
     },
     {
       "parameters": {
@@ -95,21 +106,37 @@
       "name": "🔍 NEXON?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [720, 540]
+      "position": [740, 560]
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "여기에_SLACK_WEBHOOK_URL_입력",
+        "url": "={{ $credentials.slackWebhookUrl }}",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ (() => {\n  const d = $json;\n  const blocks = [\n    {type:'header',text:{type:'plain_text',text:'🎮 NEXON 피쳐드 알림 ('+d.date+')',emoji:true}},\n    {type:'section',text:{type:'mrkdwn',text:'*'+d.nexonCount+'개 NEXON 타이틀* 스토어 피쳐드 등장'}},\n    {type:'divider'}\n  ];\n  d.nexonList.forEach(n => {\n    const se = n.stores.map(s=>s==='apple'?'🍎':'🟢').join(' ');\n    const fl = n.countries.map(c=>({KR:'🇰🇷',TW:'🇹🇼',JP:'🇯🇵',US:'🇺🇸',TH:'🇹🇭'}[c]||c)).join(' ');\n    const tags = [];\n    if(n.banner) tags.push('🔥 배너');\n    if(n.bothStores) tags.push('⚡ 양쪽');\n    blocks.push({type:'section',text:{type:'mrkdwn',text:'*'+n.name+'* '+se+'\\n#'+n.rank+' | '+( n.genre||'-')+' | '+fl+(tags.length?'\\n'+tags.join(' · '):'')}});\n  });\n  blocks.push({type:'divider'});\n  blocks.push({type:'actions',elements:[{type:'button',text:{type:'plain_text',text:'대시보드 열기',emoji:true},url:'https://store-featured-dash.netlify.app'}]});\n  return JSON.stringify({blocks});\n})() }}"
+        "jsonBody": "={{ (() => {\n  const d = $json;\n  const blocks = [\n    {type:'header',text:{type:'plain_text',text:'🎮 NEXON 피쳐드 알림 ('+d.date+')',emoji:true}},\n    {type:'section',text:{type:'mrkdwn',text:'*'+d.nexonCount+'개 NEXON 타이틀* 스토어 피쳐드 등장'}},\n    {type:'divider'}\n  ];\n  d.nexonList.forEach(n => {\n    const se = n.stores.map(s=>s==='apple'?'🍎':'🟢').join(' ');\n    const fl = n.countries.map(c=>({KR:'🇰🇷',TW:'🇹🇼',JP:'🇯🇵',US:'🇺🇸',TH:'🇹🇭'}[c]||c)).join(' ');\n    const tags = [];\n    if(n.banner) tags.push('🔥 배너');\n    if(n.bothStores) tags.push('⚡ 양쪽');\n    blocks.push({type:'section',text:{type:'mrkdwn',text:'*'+n.name+'* '+se+'\\n#'+n.rank+' | '+(n.genre||'-')+' | '+fl+(tags.length?'\\n'+tags.join(' · '):'')}});\n  });\n  blocks.push({type:'divider'});\n  blocks.push({type:'actions',elements:[{type:'button',text:{type:'plain_text',text:'대시보드 열기',emoji:true},url:'https://DASHBOARD_URL'}]});\n  return JSON.stringify({blocks});\n})() }}"
       },
       "id": "slack-nexon",
       "name": "🔔 Slack NEXON",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [960, 500]
+      "position": [980, 520],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $credentials.slackWebhookUrl }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ text: '❌ Store Featured 리포팅 에러 발생: ' + ($json.error?.message || JSON.stringify($json).slice(0,200)) }) }}"
+      },
+      "id": "slack-error",
+      "name": "❌ Error → Slack",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [740, 700],
+      "notes": "Error Workflow: 어떤 노드에서든 에러 발생 시 Slack으로 알림"
     }
   ],
   "connections": {
@@ -119,14 +146,22 @@
     "📊 Parse & Analyze": {
       "main": [[
         { "node": "📝 Notion DB Log", "type": "main", "index": 0 },
-        { "node": "📈 Notion Report Page", "type": "main", "index": 0 },
         { "node": "📋 Slack Daily", "type": "main", "index": 0 },
         { "node": "🔍 NEXON?", "type": "main", "index": 0 }
       ]]
+    },
+    "📝 Notion DB Log": {
+      "main": [[ { "node": "⏳ Wait 400ms", "type": "main", "index": 0 } ]]
+    },
+    "⏳ Wait 400ms": {
+      "main": [[ { "node": "📈 Notion Report", "type": "main", "index": 0 } ]]
     },
     "🔍 NEXON?": {
       "main": [[ { "node": "🔔 Slack NEXON", "type": "main", "index": 0 } ], []]
     }
   },
-  "settings": { "executionOrder": "v1" }
+  "settings": {
+    "executionOrder": "v1",
+    "errorWorkflow": "❌ Error → Slack"
+  }
 }
