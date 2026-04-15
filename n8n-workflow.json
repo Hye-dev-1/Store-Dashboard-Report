@@ -34,7 +34,7 @@
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "Notion-Version", "value": "2022-06-28" }
+            { "name": "Notion-Version", "value": "2026-03-11" }
           ]
         },
         "sendBody": true,
@@ -56,7 +56,7 @@
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "Notion-Version", "value": "2022-06-28" }
+            { "name": "Notion-Version", "value": "2026-03-11" }
           ]
         },
         "sendBody": true,
