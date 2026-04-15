@@ -47,23 +47,40 @@ function isNexon(dev) {
 
 /* ═══════════════════════════════════════
    HTTP 헬퍼
+   Rate Limit: Notion API 초당 3회 제한
+   429 시 Retry-After 헤더 또는 exponential backoff
    ═══════════════════════════════════════ */
+const MAX_RETRIES = 3;
+
 async function notionAPI(endpoint, body) {
   const url = `${NOTION_BASE}${endpoint}`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${NOTION_TOKEN}`,
-      "Notion-Version": NOTION_VER,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify(body)
-  });
-  const data = await res.json();
-  if (!res.ok) {
-    console.error(`[Notion ${res.status}] ${endpoint}:`, JSON.stringify(data).slice(0, 300));
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${NOTION_TOKEN}`,
+        "Notion-Version": NOTION_VER,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(body)
+    });
+
+    // 429 Rate Limit → retry with backoff
+    if (res.status === 429 && attempt < MAX_RETRIES) {
+      const retryAfter = parseInt(res.headers.get("retry-after") || "0", 10);
+      const waitMs = retryAfter > 0 ? retryAfter * 1000 : Math.min(1000 * Math.pow(2, attempt), 8000);
+      console.warn(`  ⏳ Rate limited (429), retry in ${waitMs}ms (attempt ${attempt + 1}/${MAX_RETRIES})`);
+      await sleep(waitMs);
+      continue;
+    }
+
+    const data = await res.json();
+    if (!res.ok) {
+      console.error(`[Notion ${res.status}] ${endpoint}:`, JSON.stringify(data).slice(0, 300));
+    }
+    return { ok: res.ok, status: res.status, data };
   }
-  return { ok: res.ok, status: res.status, data };
+  return { ok: false, status: 429, data: { message: "Max retries exceeded" } };
 }
 
 async function notionGET(endpoint) {
