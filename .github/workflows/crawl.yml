@@ -1,0 +1,73 @@
+name: Crawl & Report Store Featured
+
+on:
+  schedule:
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+
+jobs:
+  crawl:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Install Chromium for Puppeteer
+        run: npx puppeteer browsers install chrome
+
+      - name: Run crawler
+        run: node scripts/crawl-featured.mjs
+
+      - name: Commit & Push data
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "🔄 Update featured data $(date -u +%Y-%m-%d)"
+            git push
+          fi
+
+      # ─── n8n Cloud Webhook으로 리포팅 위임 ───
+      - name: Trigger n8n Cloud reporting
+        if: ${{ secrets.N8N_WEBHOOK_URL != '' }}
+        env:
+          N8N_WEBHOOK_URL: ${{ secrets.N8N_WEBHOOK_URL }}
+        run: |
+          node -e "
+            const fs = require('fs');
+            const path = require('path');
+            const countries = ['KR','TW','JP','US','TH'];
+            const payload = { date: new Date().toISOString().slice(0,10), countries: {} };
+            for (const cc of countries) {
+              try {
+                payload.countries[cc] = JSON.parse(fs.readFileSync(path.join('data', cc + '.json'), 'utf8'));
+              } catch(e) { payload.countries[cc] = { error: e.message }; }
+            }
+            fetch(process.env.N8N_WEBHOOK_URL, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload)
+            }).then(r => console.log('n8n webhook:', r.status))
+              .catch(e => console.error('n8n webhook fail:', e.message));
+          "
+
+      # ─── n8n 없을 때 직접 스크립트 폴백 ───
+      - name: Report via script (fallback)
+        if: ${{ secrets.N8N_WEBHOOK_URL == '' }}
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          NOTION_DB_ID: ${{ secrets.NOTION_DB_ID }}
+          NOTION_REPORT_PAGE_ID: ${{ secrets.NOTION_REPORT_PAGE_ID }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: node scripts/report-featured.mjs
